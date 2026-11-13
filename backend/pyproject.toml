@@ -1,0 +1,16 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ambient-backend"
+version = "0.1.0"
+description = "Ambient assistant for branch calls: flow loop behind an A2A interface."
+requires-python = ">=3.11"
+dependencies = ["a2a-sdk[http-server]>=1.3", "openai>=1.60", "uvicorn>=0.30", "starlette>=0.40", "python-dotenv>=1.0", "httpx>=0.27"]
+
+[project.scripts]
+ambient = "ambient.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ambient"]

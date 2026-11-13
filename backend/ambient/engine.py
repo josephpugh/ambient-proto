@@ -200,6 +200,8 @@ def call_model(prompt: str) -> dict:
         model=MODEL,
         instructions=INSTRUCTIONS,
         input=prompt,
+        service_tier="fast",
+        reasoning={"effort": "medium"},
         store=False,
         text={"format": {"type": "json_schema", "name": "flow_update", "schema": RESPONSE_SCHEMA, "strict": True}},
     )
@@ -212,6 +214,8 @@ def summarise(snippet: str) -> str:
         model=SUMMARY_MODEL,
         instructions=SUMMARY_INSTRUCTIONS,
         input=snippet.strip(),
+        reasoning={"effort": "none"},
+        service_tier="fast",
         store=False,
     )
     return resp.output_text.strip()

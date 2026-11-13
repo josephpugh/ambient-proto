@@ -163,7 +163,7 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px;
 .note .icon { flex: none; margin-top: 2px; }
 
 /* review card */
-.card.review { border-color: #e9d9b8; background: #fffdf8; }
+.card.review { margin-top: 16px; border-color: #e9d9b8; background: #fffdf8; }
 .card.review.is-submitted { border-color: #cfe3bf; background: #fbfdf8; }
 .review-title { font-weight: 500; font-size: 13px; }
 .review-grid { margin: 0; display: flex; flex-direction: column; }

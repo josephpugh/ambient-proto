@@ -7,7 +7,7 @@ import Feed from './Feed.jsx'
 import Composer from './Composer.jsx'
 import Icon from './Icons.jsx'
 
-const DEFAULT_WIDTH = 420
+const DEFAULT_WIDTH = 400
 const MIN_WIDTH = 320
 const MAX_WIDTH = 640
 

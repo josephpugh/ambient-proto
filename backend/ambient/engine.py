@@ -8,7 +8,7 @@ call and is always the first event out.
 Events yielded (plain dicts, each with a "kind"):
   summary          {text, turn}
   flow_activated   {flow, title, rationale}
-  fields           {flow, title, iteration, accepted[] (each with new / changed), rejected[], required[], complete}
+  fields           {flow, title, iteration, accepted[] (each with new / changed), rejected[], required[] (each with why and hint), complete}
   supporting       {flow, choices{field: [{value,label}]}, notes[]}
   turn_done        {turn, iterations, changed}
   artifact         {flow, record}      the full record of a flow, re-emitted whenever it changes

@@ -174,7 +174,7 @@ function ReviewCard({ flow, busy, onConfirm }) {
         </div>
       ) : ready ? (
         <div className="review-foot">
-          <span className="review-note">Confirm with the client, then submit as yourself.</span>
+          <span className="review-note">Confirm all details before submitting.</span>
           <button className="btn-primary" disabled={busy} onClick={() => onConfirm(record.flow)}>
             Confirm
           </button>

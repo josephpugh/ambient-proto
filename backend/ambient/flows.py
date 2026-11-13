@@ -1,10 +1,9 @@
-"""Flows: the framework (Field, Result, Flow), the stand-in for the BAM tools, and the two flows.
+"""Flows: the framework (Field, Result, Flow), the stand-in for the BAM tools, and the order check flow.
 
-This is the notebook's sections 1 to 5, unchanged in behaviour, with two small additions that
-the UI needs: a human label per field, and a `supporting` method per flow that returns the
-choices and notes the domain can offer once dependencies are known. In the target state the
-flow definition, `validate_inputs`, `supporting` and `submit` live behind the domain's MCP
-server. Here they are in-process so the loop can be run end to end.
+A Field is only a schema entry: the name, the type, the descriptor the model reads, and the label and hint
+people read. It holds no rules. Everything that decides whether a value is acceptable, what depends on what, and what is required when, is code in the
+flow's `validate` method. In the target state the flow definition, `validate`, `supporting` and `submit`
+live behind the domain's MCP server. Here they are in-process so the loop can be run end to end.
 """
 
 from __future__ import annotations
@@ -13,22 +12,18 @@ import json
 import re
 import uuid
 from dataclasses import dataclass, field
-from datetime import date
-from typing import Any, Callable
+from typing import Any
 
 Values = dict[str, Any]
 
 
 @dataclass
 class Field:
-    name: str
-    type: type
-    descriptor: str                                          # read by the model
-    label: str = ""                                          # read by people
-    depends_on: tuple[str, ...] = ()                         # must be accepted before this can be checked
-    required_when: Callable[[Values], bool] = lambda accepted: True
-    validate: Callable[[Any, Values], str | None] = lambda value, accepted: None   # reason, or None
-    hint: str = ""                                           # what to ask the client when outstanding
+    name: str            # key in the record and in the model's reply
+    type: type           # str, float, bool or list; the model returns strings and `coerce` converts them
+    descriptor: str      # what the value is and how to express it, read by the model
+    label: str = ""      # what people see; defaults to the name with underscores as spaces
+    hint: str = ""       # the question to ask the client while the field is outstanding, shown to people
 
     def __post_init__(self) -> None:
         if not self.label:
@@ -48,6 +43,22 @@ class Result:
     def complete(self) -> bool:
         return not self.missing and not self.rejected
 
+    # The vocabulary a flow's `validate` uses to record its verdicts.
+    def accept(self, name: str, value: Any) -> None:
+        self.accepted[name] = value
+
+    def reject(self, name: str, reason: str) -> None:
+        self.rejected[name] = reason
+
+    def require(self, name: str, why: str = "not provided") -> None:
+        """Mark a field outstanding. A value that was turned down stays reported as rejected, not missing."""
+        if name not in self.rejected:
+            self.missing[name] = why
+
+    def defer(self, name: str, *until: str) -> None:
+        """A value was given but cannot be judged until the named fields are accepted."""
+        self.require(name, f"cannot be checked until {', '.join(until)} is valid")
+
 
 class Flow:
     name: str = ""
@@ -56,32 +67,24 @@ class Flow:
     fields: list[Field] = []
 
     def validate_inputs(self, provided: Values) -> Result:
+        """Type-check what was proposed against the schema, then let the flow's own rules judge all of it."""
         r = Result()
-        # Pass 1: judge what was provided, dependencies first (fields are listed in dependency order).
+        typed: Values = {}
         for f in self.fields:
             if f.name not in provided:
                 continue
-            unmet = [d for d in f.depends_on if d not in r.accepted]
-            if unmet:
-                r.missing[f.name] = f"cannot be checked until {', '.join(unmet)} is valid"
-                continue
-            value = provided[f.name]
-            if not isinstance(value, f.type):
-                r.rejected[f.name] = f"expected {f.type_name()}"
-                continue
-            reason = f.validate(value, r.accepted)
-            if reason:
-                r.rejected[f.name] = reason
+            if isinstance(provided[f.name], f.type):
+                typed[f.name] = provided[f.name]
             else:
-                r.accepted[f.name] = value
-        # Pass 2: what is required right now, given what has been accepted?
-        for f in self.fields:
-            if not f.required_when(r.accepted):
-                continue
-            if f.name in r.accepted or f.name in r.rejected or f.name in r.missing:
-                continue
-            r.missing[f.name] = "not provided"
+                r.reject(f.name, f"expected {f.type_name()}")
+        self.validate(typed, r)
         return r
+
+    def validate(self, values: Values, r: Result) -> None:
+        """The flow's rules. Given every typed value proposed so far, record on `r` what is accepted, what is
+        rejected and why, and what is still required and why. Dependencies between fields, conditional
+        requirements and the domain checks all live here, not in the field schema. Overridden per flow."""
+        raise NotImplementedError
 
     def supporting(self, result: Result) -> dict:
         """Choices per outstanding field and notes for the branch user. Overridden per flow."""
@@ -104,7 +107,7 @@ class Flow:
         if f.type is bool:
             return "Confirmed" if value else "Not confirmed"
         if f.type is list:
-            return "All accounts" if value == ["all"] else ", ".join(str(v) for v in value)
+            return ", ".join(str(v) for v in value)
         return str(value)
 
 
@@ -128,17 +131,12 @@ class FakeBAM:
         self.accounts[account] -= amount
         return "CHK-" + uuid.uuid4().hex[:6].upper()
 
-    def update_address(self, address, effective, accounts) -> str:
-        if address not in self.addresses_on_file:
-            self.addresses_on_file.append(address)
-        return "ADR-" + uuid.uuid4().hex[:6].upper()
-
 
 bam = FakeBAM()
 LARGE_CHECK = 10_000.00
 
 
-# ---------------------------------------------------------------- flow one: order a check
+# ---------------------------------------------------------------- the flow: order a check
 
 class OrderCheck(Flow):
     name = "order_check"
@@ -149,35 +147,75 @@ class OrderCheck(Flow):
         Field("account", str,
               "The client's account the check is drawn on. The client will say 'the joint account' or 'ending 4471', "
               "not the number. Known accounts: joint-4471, ira-9902.",
-              label="Account", hint="Which account is the check drawn on?",
-              validate=lambda v, acc: None if bam.is_client_account(v) else "not one of the client's accounts"),
+              label="Account", hint="Which account is the check drawn on?"),
         Field("amount", float,
               "The check amount in dollars, as a number. 'five thousand' is 5000.",
-              label="Amount", hint="How much is the check for?",
-              depends_on=("account",),
-              validate=lambda v, acc: ("must be greater than zero" if v <= 0 else
-                                       f"exceeds available balance of {bam.balance(acc['account']):,.2f}" if v > bam.balance(acc["account"])
-                                       else None)),
+              label="Amount", hint="How much is the check for?"),
         Field("payee", str,
               "Who the check is made out to. Usually the client. Use the full name as spoken.",
-              label="Payee", hint="Who is the check made out to?",
-              depends_on=("account",),
-              validate=lambda v, acc: ("payee name is empty" if not v.strip() else
-                                       None if bam.is_owner(acc["account"], v) else "payee is not an owner of the account")),
+              label="Payee", hint="Who is the check made out to?"),
         Field("delivery_address", str,
               "Where to mail the check, as a full postal address. If the client says 'the house' or 'home', "
               "that means the street address on file: 12 Elm Street, Chapel Hill, NC 27514. 'the PO box' means PO Box 881, Chapel Hill, NC 27515.",
-              label="Delivery address", hint="Where should the check be sent?",
-              validate=lambda v, acc: (None if bam.address_on_file(v) else
-                                       "address is not on file; use one on file or confirm a new address" if bam.standardise(v)
-                                       else "not a complete postal address")),
+              label="Delivery address", hint="Where should the check be sent?"),
         Field("verification_confirmed", bool,
               "Branch user confirms the large-check verification procedure was completed. Only the branch user can say this.",
-              label="Large-check verification", hint="Complete the verification procedure, then confirm it here.",
-              depends_on=("amount",),
-              required_when=lambda acc: "amount" in acc and acc["amount"] >= LARGE_CHECK,
-              validate=lambda v, acc: None if v is True else "verification must be confirmed"),
+              label="Large-check verification", hint="Complete the verification procedure, then confirm it here."),
     ]
+
+    def validate(self, v: Values, r: Result) -> None:
+        # The account comes first: the amount and the payee are both judged against it.
+        if "account" not in v:
+            r.require("account")
+        elif not bam.is_client_account(v["account"]):
+            r.reject("account", "not one of the client's accounts")
+        else:
+            r.accept("account", v["account"])
+        account = r.accepted.get("account")
+
+        if "amount" not in v:
+            r.require("amount")
+        elif account is None:
+            r.defer("amount", "account")
+        elif v["amount"] <= 0:
+            r.reject("amount", "must be greater than zero")
+        elif v["amount"] > bam.balance(account):
+            r.reject("amount", f"exceeds available balance of {bam.balance(account):,.2f}")
+        else:
+            r.accept("amount", v["amount"])
+
+        if "payee" not in v:
+            r.require("payee")
+        elif account is None:
+            r.defer("payee", "account")
+        elif not v["payee"].strip():
+            r.reject("payee", "payee name is empty")
+        elif not bam.is_owner(account, v["payee"]):
+            r.reject("payee", "payee is not an owner of the account")
+        else:
+            r.accept("payee", v["payee"])
+
+        if "delivery_address" not in v:
+            r.require("delivery_address")
+        elif bam.address_on_file(v["delivery_address"]):
+            r.accept("delivery_address", v["delivery_address"])
+        elif bam.standardise(v["delivery_address"]):
+            r.reject("delivery_address", "address is not on file; use one on file or confirm a new address")
+        else:
+            r.reject("delivery_address", "not a complete postal address")
+
+        # The large-check verification is only part of the record once the amount is accepted and at or above
+        # the threshold. Until then it is invisible: not outstanding, not asked for, not shown.
+        amount = r.accepted.get("amount")
+        if "verification_confirmed" in v:
+            if amount is None:
+                r.defer("verification_confirmed", "amount")
+            elif v["verification_confirmed"] is not True:
+                r.reject("verification_confirmed", "verification must be confirmed")
+            else:
+                r.accept("verification_confirmed", v["verification_confirmed"])
+        elif amount is not None and amount >= LARGE_CHECK:
+            r.require("verification_confirmed")
 
     def supporting(self, r: Result) -> dict:
         choices: dict[str, list[dict]] = {}
@@ -201,64 +239,9 @@ class OrderCheck(Flow):
         return {"reference": ref, "summary": f"Check for ${a['amount']:,.2f} to {a['payee']} from {a['account']}, mailed to {a['delivery_address']}."}
 
 
-# ---------------------------------------------------------------- flow two: update a mailing address
-
-def _valid_future_date(v: str) -> str | None:
-    try:
-        d = date.fromisoformat(v)
-    except ValueError:
-        return "not an ISO date"
-    return None if d >= date.today() else "effective date is in the past"
-
-
-class UpdateMailingAddress(Flow):
-    name = "update_mailing_address"
-    title = "Update mailing address"
-    description = ("The client says they have moved or want mail sent somewhere new, permanently. "
-                   "Listen for: 'we moved', 'new address', 'update my address', 'change where you send'. "
-                   "Not for a one-off delivery of a single item.")
-    fields = [
-        Field("new_address", str,
-              "The new mailing address as a full postal address: street, city, state, ZIP.",
-              label="New address", hint="What is the full new address, including ZIP?",
-              validate=lambda v, acc: None if bam.standardise(v) else "not a complete postal address (need street, city, state, 5-digit ZIP)"),
-        Field("effective_date", str,
-              "When the change takes effect, as an ISO date (YYYY-MM-DD). 'from the first' means the first of next month.",
-              label="Effective date", hint="When should the new address take effect?",
-              validate=lambda v, acc: _valid_future_date(v)),
-        Field("accounts_to_update", list,
-              "Which accounts the new address applies to, as a list of account ids, or ['all'] for every account. "
-              "Known accounts: joint-4471, ira-9902.",
-              label="Accounts to update", hint="Does this apply to all accounts or only some?",
-              validate=lambda v, acc: (None if v == ["all"] or (v and all(bam.is_client_account(a) for a in v))
-                                       else "one or more accounts are not the client's")),
-        Field("client_confirmed_new_address", bool,
-              "Branch user confirms the new address back to the client and the client agreed. Only the branch user can say this.",
-              label="Client confirmed address", hint="Read the new address back to the client and confirm they agree.",
-              depends_on=("new_address",),
-              required_when=lambda acc: "new_address" in acc and not bam.address_on_file(acc["new_address"]),
-              validate=lambda v, acc: None if v is True else "client must confirm the new address"),
-    ]
-
-    def supporting(self, r: Result) -> dict:
-        choices: dict[str, list[dict]] = {}
-        notes: list[str] = []
-        if "accounts_to_update" in r.missing:
-            choices["accounts_to_update"] = [{"value": "all", "label": "All accounts"}] + \
-                [{"value": a, "label": n} for a, n in bam.account_names.items()]
-        if "client_confirmed_new_address" in r.missing:
-            choices["client_confirmed_new_address"] = [{"value": "true", "label": "Client confirmed"}]
-            notes.append("The new address is not on file. Read it back to the client before it is recorded.")
-        return {"choices": choices, "notes": notes}
-
-    def submit(self, a: Values) -> dict:
-        ref = bam.update_address(a["new_address"], a["effective_date"], a["accounts_to_update"])
-        return {"reference": ref, "summary": f"Mailing address set to {a['new_address']} from {a['effective_date']} on {self.display('accounts_to_update', a['accounts_to_update']).lower()}."}
-
-
 # ---------------------------------------------------------------- the catalogue
 
-FLOWS: dict[str, Flow] = {f.name: f for f in (OrderCheck(), UpdateMailingAddress())}
+FLOWS: dict[str, Flow] = {f.name: f for f in (OrderCheck(),)}
 
 
 def coerce(f: Field, raw: Any) -> tuple[Any, str | None]:

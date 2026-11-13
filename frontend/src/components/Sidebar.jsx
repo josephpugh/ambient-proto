@@ -81,7 +81,6 @@ export default function Sidebar() {
     dispatch({ type: 'reset' })
   }
 
-  const hasFlows = state.flowOrder.length > 0
 
   return (
     <aside className="sidebar" style={{ width }} aria-label="Ambient assistant">
@@ -95,12 +94,6 @@ export default function Sidebar() {
           <Empty />
         ) : (
           <Feed state={state} onPick={sendDetail} onConfirm={confirm} />
-        )}
-        {hasFlows && (
-          <div className="consent">
-            <Icon name="cert" size={13} />
-            Client consent on file. Nothing is submitted without you.
-          </div>
         )}
       </div>
       <Composer busy={state.busy} onSend={sendSnippet} />

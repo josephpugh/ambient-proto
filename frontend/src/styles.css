@@ -187,7 +187,6 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px;
 
 .working-line { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 11.5px; color: var(--ink-3); }
 
-.consent { padding: 12px 0 0; font-size: 11px; color: var(--ink-3); display: flex; align-items: center; gap: 6px; }
 
 /* ---------- empty state */
 .empty { padding: 48px 12px 24px; text-align: center; }

@@ -62,7 +62,7 @@ def build_agent_card(public_url: str) -> AgentCard:
             "and returns a reviewable record. It never submits anything itself."
         ),
         version="0.1.0",
-        provider=AgentProvider(organization="Edward Jones, AI Control Plane", url=public_url),
+        provider=AgentProvider(organization="Ambient assistant prototype", url=public_url),
         supported_interfaces=[AgentInterface(protocol_binding="JSONRPC", protocol_version="1.0", url=public_url.rstrip("/") + RPC_PATH)],
         capabilities=AgentCapabilities(streaming=True, push_notifications=False),
         default_input_modes=["text/plain", "application/json"],

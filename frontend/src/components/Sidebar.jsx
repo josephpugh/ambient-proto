@@ -24,6 +24,11 @@ export default function Sidebar() {
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
+  // Publish the width so the desk behind the sidebar can keep clear of it.
+  useEffect(() => {
+    document.documentElement.style.setProperty('--sidebar-width', width + 'px')
+  }, [width])
+
   const startDrag = (e) => {
     e.preventDefault()
     const startX = e.clientX

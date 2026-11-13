@@ -36,8 +36,32 @@ body {
 button { font-family: inherit; font-size: inherit; }
 code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px; background: var(--paper-2); padding: 1px 4px; border-radius: 4px; }
 
-/* ---------- the desk behind the sidebar */
-.desk { min-height: 100vh; padding: 40px 48px; }
+/* ---------- the desk to the left of the sidebar */
+.desk { min-height: 100vh; padding: 40px 48px; padding-right: calc(var(--sidebar-width, 400px) + 48px); }
+
+.samples { max-width: 1040px; }
+.samples-head { margin-bottom: 18px; }
+.samples-title { font-weight: 500; font-size: 16px; }
+.samples-sub { color: var(--ink-2); font-size: 12.5px; margin-top: 3px; }
+.samples-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; align-items: start; }
+
+.sample {
+  background: var(--paper); border: 0.5px solid var(--line-2); border-radius: 14px; padding: 14px 16px 12px;
+  box-shadow: 0 1px 2px rgba(44, 44, 42, 0.04);
+}
+.sample-head { display: flex; align-items: flex-start; gap: 12px; padding-bottom: 10px; border-bottom: 0.5px solid var(--line); }
+.sample-title-wrap { flex: 1; min-width: 0; }
+.sample-title { margin: 0; font-weight: 500; font-size: 14px; }
+.sample-summary { margin: 3px 0 0; font-size: 12px; color: var(--ink-2); line-height: 1.45; }
+.btn-icon.copy { flex: none; margin-top: 1px; }
+.btn-icon.copy.is-copied { color: var(--green); border-color: #cfe3bf; background: var(--green-soft); }
+
+.sample-lines { list-style: none; margin: 0; padding: 10px 0 0; display: flex; flex-direction: column; gap: 7px; }
+.sample-line { display: grid; grid-template-columns: 56px 1fr; gap: 10px; align-items: baseline; font-size: 12.5px; line-height: 1.45; }
+.sample-line .speaker { font-size: 11px; color: var(--ink-3); text-transform: capitalize; }
+.sample-line.client .speaker { color: var(--blue); }
+.sample-line .said { color: var(--ink); }
+.sample-line.client .said { font-family: var(--font-serif); font-size: 13.5px; }
 
 /* ---------- sidebar frame */
 .sidebar {
@@ -218,7 +242,7 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px;
 }
 .spinner.dark { border-color: var(--line-2); border-top-color: var(--ink-3); width: 12px; height: 12px; }
 
-@media (max-width: 480px) {
+@media (max-width: 760px) {
   .desk { display: none; }
   .sidebar { width: 100vw !important; min-width: 0; }
 }
